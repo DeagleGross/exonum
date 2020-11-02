@@ -85,7 +85,7 @@ pub struct TxSendApprove {
 }
 
 impl TxSendApprove {
-    /// Creates a new wallet.
+    /// Creates a new approval transaction.
     pub fn new(
         to: Address,
         amount: u64,

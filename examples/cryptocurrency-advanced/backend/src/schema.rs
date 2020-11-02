@@ -46,7 +46,8 @@ pub(crate) struct SchemaImpl<T: Access> {
 pub struct Schema<T: Access> {
     /// Map of wallet keys to information about the corresponding account.
     pub wallets: RawProofMapIndex<T::Base, Address, Wallet>,
-    pub approval_transactions: ProofListIndex<T::Base, TxSendApprove>
+    /// Map of approval transactions hash to infromation about the corresponding approval transaction
+    pub approval_transactions: RawProofMapIndex<T::Base, Hash, TxSendApprove>
 }
 
 impl<T: Access> SchemaImpl<T> {
@@ -65,7 +66,7 @@ where
     T::Base: RawAccessMut,
 {
     /// Append new unapproved transaction record to db.
-    pub fn create_approve_transaction(&mut self, wallet: Wallet, to: Address, amount: u64, approver: Address, approved: bool, transaction: Hash) {
+    pub fn create_approve_transaction(&mut self, wallet: Wallet, to: Address, amount: u64, approver: Address, approved: bool, tx_hash: Hash) {
         // Save transaction in wallet's history
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(transaction);
@@ -76,7 +77,7 @@ where
 
         // Save transaction in approval_transactions
         let transaction = TxSendApprove::new(to, amount, seed, approver, approved);
-        self.public.approval_transactions.put(transaction);
+        self.public.approval_transactions.put(&tx_hash, transaction);
     }
 
     /// Increases balance of the wallet and append new record to its history.
