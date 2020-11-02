@@ -1,5 +1,19 @@
 # Exonum
 
+This is a study repository for subject `Smart Contracts`.  
+Contributors: `Sergey Roytman` and `Korolev Dmitry`, group `bse-173`.   
+
+We are making every single task in a new branch and making 
+a pull-request to `master` branch,
+so You can easily see what changes have been made. 
+
+## Homeworks
+- [ ] Task 1
+- [ ] Task 2
+- [ ] Task 3
+- [ ] Task 4
+---
+
 **Status:**
 [![Travis Build Status](https://img.shields.io/travis/exonum/exonum/master.svg?label=Linux)](https://travis-ci.com/exonum/exonum)
 [![dependency status](https://deps.rs/repo/github/exonum/exonum/status.svg)](https://deps.rs/repo/github/exonum/exonum)
