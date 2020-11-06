@@ -22,7 +22,7 @@ use exonum_derive::{exonum_interface, interface_method, BinaryValue, ExecutionFa
 use exonum_proto::ProtobufConvert;
 
 use crate::{proto, schema::SchemaImpl, CryptocurrencyService};
-use rand::seq::IteratorRandom;
+use rand::Rng;
 
 /// Error codes emitted by wallet transactions during execution.
 #[derive(Debug, ExecutionFail)]
@@ -50,7 +50,7 @@ pub enum Error {
     /// Approver doesn't exist.
     ///
     /// Can be emitted by `TxSendApprove`.
-    ApproverNotFound = 5,
+    ApproverNotFound = 5
 }
 
 /// Transfer `amount` of the currency from one wallet to another.
@@ -66,14 +66,13 @@ pub struct Transfer {
     ///
     /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
     pub seed: u64
-    pub seed: u64
 }
 
 
 /// Information about transaction with approval stored in the database.
 #[derive(Clone, Debug)]
 #[derive(ProtobufConvert, BinaryValue, ObjectHash)]
-#[protobuf_convert(source = "proto::TxSendApprove", serde_pb_convert)]
+#[protobuf_convert(source = "proto::service::TxSendApprove", serde_pb_convert)]
 pub struct TxSendApprove {
     /// Address of receiver's wallet.
     pub to: Address,
@@ -92,14 +91,15 @@ impl TxSendApprove {
     pub fn new(
         to: Address,
         amount: u64,
-        seed: u64,
         approver: Address
     ) -> Self {
+        let mut rng = rand::thread_rng();
+
         Self {
-            to,
-            amount,
-            seed,
-            approver
+            to: to,
+            amount: amount,
+            seed: rng.gen::<u64>(),
+            approver: approver
         }
     }
 
@@ -155,15 +155,15 @@ pub trait CryptocurrencyInterface<Ctx> {
     /// Transfers `amount` of the currency from one wallet to another.
     #[interface_method(id = 0)]
     fn transfer(&self, ctx: Ctx, arg: Transfer) -> Self::Output;
-    /// Transfer `amount` of the currency from one wallet to another with approval from third person.
-    #[interface_method(id = 0)]
-    fn tx_send_approve(&self, ctx: Ctx, arg: TxSendApprove) -> Self::Output;
     /// Issues `amount` of the currency to the `wallet`.
     #[interface_method(id = 1)]
     fn issue(&self, ctx: Ctx, arg: Issue) -> Self::Output;
     /// Creates wallet with the given `name`.
     #[interface_method(id = 2)]
     fn create_wallet(&self, ctx: Ctx, arg: CreateWallet) -> Self::Output;
+    /// Transfer `amount` of the currency from one wallet to another with approval from third person.
+    #[interface_method(id = 3)]
+    fn tx_send_approve(&self, ctx: Ctx, arg: TxSendApprove) -> Self::Output;
 }
 
 impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
@@ -191,6 +191,7 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
     }
 
     fn tx_send_approve(&self, context: ExecutionContext<'_>, arg: TxSendApprove) -> Self::Output {
+        // Getting schema
         let (from, tx_hash) = extract_info(&context)?;
         let mut schema = SchemaImpl::new(context.service_data());
 
@@ -200,15 +201,16 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
             return Err(Error::SenderSameAsReceiver.into());
         }
 
-        let sender = schema.wallet(from).ok_or(Error::SenderNotFound)?;
-        let receiver = schema.wallet(arg.to).ok_or(Error::ReceiverNotFound)?;
+        let sender_wallet = schema.wallet(from).ok_or(Error::SenderNotFound)?;
+        
         // Check approver exists
-        let approver = schema.wallet(arg.approver).ok_or(Error::ApproverNotFound)?;
+        let _ = schema.wallet(arg.approver).ok_or(Error::ApproverNotFound)?;
+        
         // Check balance
-        if sender.balance - sender.freezed_balance < amount {
+        if sender_wallet.balance - sender_wallet.freezed_balance < amount {
             Err(Error::InsufficientCurrencyAmount.into())
         } else {
-            schema.create_approve_transaction(sender, receiver, amount, approver, tx_hash);
+            schema.create_approve_transaction(&sender_wallet, amount, to, arg.approver, tx_hash);
             Ok(())
         }
     }

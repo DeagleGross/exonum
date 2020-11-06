@@ -25,8 +25,7 @@ use exonum::{
 use exonum_derive::{FromAccess, RequireArtifact};
 
 use crate::{wallet::Wallet, INITIAL_BALANCE};
-use crate::transactions::TxSendApprove;
-use futures_retry::FutureFactory;
+use crate::{transactions::TxSendApprove};
 
 /// Database schema for the cryptocurrency.
 ///
@@ -66,19 +65,19 @@ where
     T::Base: RawAccessMut,
 {
     /// Append new unapproved transaction record to db.
-    pub fn create_approve_transaction(&mut self, wallet: Wallet, to: Address, amount: u64, approver: Address, tx_hash: Hash) {
+    /// 'wallet' - wallet of sender
+    pub fn create_approve_transaction(&mut self, wallet: &Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
         // Save transaction in wallet's history
         let mut history = self.wallet_history.get(&wallet.owner);
-        history.push(transaction);
-        let history_hash = history.object_hash();
+        history.push(tx_hash);
         let wallet_key = wallet.owner;
-        self.public.wallets.put(&wallet_key, wallet);
+        self.public.wallets.put(&wallet_key, (*wallet).clone());
 
         // Update freezed balance
-        self.increase_wallet_freezed_balance(wallet, amount, tx_hash);
+        self.increase_wallet_freezed_balance((*wallet).clone(), amount, tx_hash);
 
         // Save transaction in schema.approval_transactions
-        let transaction = TxSendApprove::new(to, amount, seed, approver);
+        let transaction = TxSendApprove::new(to, amount, approver);
         self.public.approval_transactions.put(&tx_hash, transaction);
     }
 
