@@ -71,7 +71,6 @@ where
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(tx_hash);
         let wallet_key = wallet.owner;
-        self.public.wallets.put(&wallet_key, (*wallet).clone());
 
         // Update freezed balance
         self.increase_wallet_freezed_balance((*wallet).clone(), amount, tx_hash);
@@ -85,10 +84,13 @@ where
     pub fn increase_wallet_freezed_balance(&mut self, wallet: Wallet, amount: u64, transaction: Hash) {
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(transaction);
+
         let history_hash = history.object_hash();
         let freezed_balance = wallet.freezed_balance;
         let wallet = wallet.set_freezed_balance(freezed_balance + amount, &history_hash);
         let wallet_key = wallet.owner;
+        
+        // storing in wallets-db
         self.public.wallets.put(&wallet_key, wallet);
     }
 
