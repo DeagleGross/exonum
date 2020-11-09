@@ -30,6 +30,7 @@ use exonum_testkit::{
     ApiKind, Spec, TestKit, TestKitApi, TestKitBuilder,
 };
 use serde_json::json;
+use exonum_cryptocurrency_advanced::transactions::TxSendApprove;
 
 // Import data types used in tests from the crate where the service is defined.
 use exonum_cryptocurrency_advanced::{
@@ -48,9 +49,57 @@ const BOB_NAME: &str = "Bob";
 const SERVICE_ID: u32 = 120;
 /// Service instance name.
 const SERVICE_NAME: &str = "tst-token";
+/// Approver's wallet name.
+const APPROVER_NAME: &str = "Approver";
 
 fn author_address(tx: &Verified<AnyTx>) -> CallerAddress {
     CallerAddress::from_key(tx.author())
+}
+
+/// Check that the transfer transaction with approval works as intended.
+#[tokio::test]
+async fn test_tx_send_approve() {
+    // Create 3 wallets.
+    let (mut testkit, api) = create_testkit();
+    let (tx_alice, _alice) = api.create_wallet(ALICE_NAME).await;
+    let (tx_bob, _bob) = api.create_wallet(BOB_NAME).await;
+    let (tx_approver, _approver) = api.create_wallet(APPROVER_NAME).await;
+    testkit.create_block();
+    api.assert_tx_status(tx_alice.object_hash(), &json!({ "type": "success" }))
+        .await;
+    api.assert_tx_status(tx_bob.object_hash(), &json!({ "type": "success" }))
+        .await;
+    api.assert_tx_status(tx_approver.object_hash(), &json!({ "type": "success" }))
+        .await;
+
+    // Check that the initial Alice's and Bob's balances persisted by the service.
+    let wallet = api.get_wallet(tx_alice.author()).await.unwrap();
+    assert_eq!(wallet.balance, 100);
+    let wallet = api.get_wallet(tx_bob.author()).await.unwrap();
+    assert_eq!(wallet.balance, 100);
+
+    // Transfer funds by invoking the corresponding API method.
+    let tx = _alice.tx_send_approve(
+        SERVICE_ID,
+        TxSendApprove {
+            to: author_address(&tx_bob),
+            approver: author_address(&tx_approver),
+            amount: 10,
+            seed: 10,
+        },
+    );
+
+    api.transfer(&tx).await;
+    testkit.create_block();
+    api.assert_tx_status(tx.object_hash(), &json!({ "type": "success" }))
+        .await;
+
+    let alice_wallet = api.get_wallet(tx_alice.author()).await.unwrap();
+    assert_eq!(alice_wallet.freezed_balance, 10);
+    assert_eq!(alice_wallet.balance, 100);
+    let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
+    assert_eq!(bob_wallet.freezed_balance, 0);
+    assert_eq!(bob_wallet.balance, 100);
 }
 
 /// Check that the wallet creation transaction works when invoked via API.
