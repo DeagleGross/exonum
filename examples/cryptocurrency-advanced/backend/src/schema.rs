@@ -70,7 +70,6 @@ where
         // Save transaction in wallet's history
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(tx_hash);
-        let wallet_key = wallet.owner;
 
         // Update freezed balance
         self.increase_wallet_freezed_balance((*wallet).clone(), amount, tx_hash);
