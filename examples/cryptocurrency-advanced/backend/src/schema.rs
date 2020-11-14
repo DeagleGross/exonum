@@ -66,13 +66,9 @@ where
 {
     /// Append new unapproved transaction record to db.
     /// 'wallet' - wallet of sender
-    pub fn create_approve_transaction(&mut self, wallet: &Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
-        // Save transaction in wallet's history
-        let mut history = self.wallet_history.get(&wallet.owner);
-        history.push(tx_hash);
-
-        // Update freezed balance
-        self.increase_wallet_freezed_balance((*wallet).clone(), amount, tx_hash);
+    pub fn create_approve_transaction(&mut self, wallet: Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
+        // Update freezed balance & save the history
+        self.increase_wallet_freezed_balance(wallet, amount, tx_hash);
 
         // Save transaction in schema.approval_transactions
         let transaction = TxSendApprove::new(to, amount, approver);
@@ -81,15 +77,17 @@ where
 
     /// Increases freezed balance of the wallet and append new record to its history.
     pub fn increase_wallet_freezed_balance(&mut self, wallet: Wallet, amount: u64, transaction: Hash) {
+        // Save transaction in wallet's history
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(transaction);
 
+        // Increase freezed balance
         let history_hash = history.object_hash();
         let freezed_balance = wallet.freezed_balance;
         let wallet = wallet.set_freezed_balance(freezed_balance + amount, &history_hash);
-        let wallet_key = wallet.owner;
-        
+
         // storing in wallets-db
+        let wallet_key = wallet.owner;
         self.public.wallets.put(&wallet_key, wallet);
     }
 

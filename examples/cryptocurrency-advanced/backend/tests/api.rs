@@ -59,12 +59,13 @@ fn author_address(tx: &Verified<AnyTx>) -> CallerAddress {
 /// Check that the transfer transaction with approval works as intended.
 #[tokio::test]
 async fn test_tx_send_approve() {
-    // Create 3 wallets.
     let (mut testkit, api) = create_testkit();
+    testkit.create_block();
+
+    // Create 3 wallets
     let (tx_alice, _alice) = api.create_wallet(ALICE_NAME).await;
     let (tx_bob, _bob) = api.create_wallet(BOB_NAME).await;
     let (tx_approver, _approver) = api.create_wallet(APPROVER_NAME).await;
-    testkit.create_block();
     api.assert_tx_status(tx_alice.object_hash(), &json!({ "type": "success" }))
         .await;
     api.assert_tx_status(tx_bob.object_hash(), &json!({ "type": "success" }))
@@ -72,34 +73,103 @@ async fn test_tx_send_approve() {
     api.assert_tx_status(tx_approver.object_hash(), &json!({ "type": "success" }))
         .await;
 
+    const INITIAL_WALLET_BALANCE:u64 = 100;
     // Check that the initial Alice's and Bob's balances persisted by the service.
     let wallet = api.get_wallet(tx_alice.author()).await.unwrap();
-    assert_eq!(wallet.balance, 100);
+    assert_eq!(wallet.balance, INITIAL_WALLET_BALANCE);
     let wallet = api.get_wallet(tx_bob.author()).await.unwrap();
-    assert_eq!(wallet.balance, 100);
+    assert_eq!(wallet.balance, INITIAL_WALLET_BALANCE);
 
-    // Transfer funds by invoking the corresponding API method.
+    const TRANSFER_AMOUNT:u64 = 10;
+    // Create transfer with approval transaction
     let tx = _alice.tx_send_approve(
         SERVICE_ID,
         TxSendApprove {
             to: author_address(&tx_bob),
             approver: author_address(&tx_approver),
-            amount: 10,
+            amount: TRANSFER_AMOUNT,
             seed: 10,
         },
     );
 
+    // Execute transaction by invoking the corresponding API method
     api.transfer(&tx).await;
     testkit.create_block();
     api.assert_tx_status(tx.object_hash(), &json!({ "type": "success" }))
         .await;
 
+    // Check that alice freezed balance has increased, the rest shouldn't change
     let alice_wallet = api.get_wallet(tx_alice.author()).await.unwrap();
-    assert_eq!(alice_wallet.freezed_balance, 10);
-    assert_eq!(alice_wallet.balance, 100);
+    assert_eq!(alice_wallet.freezed_balance, TRANSFER_AMOUNT);
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
+
     let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
     assert_eq!(bob_wallet.freezed_balance, 0);
-    assert_eq!(bob_wallet.balance, 100);
+    assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
+}
+
+/// Check that an overcharge does not lead to changes in sender's and receiver's balances.
+#[tokio::test]
+async fn test_tx_send_approve_overcharge() {
+    let (mut testkit, api) = create_testkit();
+    testkit.create_block();
+
+    // Create 3 wallets
+    let (tx_alice, _alice) = api.create_wallet(ALICE_NAME).await;
+    let (tx_bob, _bob) = api.create_wallet(BOB_NAME).await;
+    let (tx_approver, _approver) = api.create_wallet(APPROVER_NAME).await;
+    api.assert_tx_status(tx_alice.object_hash(), &json!({ "type": "success" }))
+        .await;
+    api.assert_tx_status(tx_bob.object_hash(), &json!({ "type": "success" }))
+        .await;
+    api.assert_tx_status(tx_approver.object_hash(), &json!({ "type": "success" }))
+        .await;
+
+    const INITIAL_WALLET_BALANCE:u64 = 100;
+    // Check that the initial Alice's and Bob's balances persisted by the service.
+    let wallet = api.get_wallet(tx_alice.author()).await.unwrap();
+    assert_eq!(wallet.balance, INITIAL_WALLET_BALANCE);
+    let wallet = api.get_wallet(tx_bob.author()).await.unwrap();
+    assert_eq!(wallet.balance, INITIAL_WALLET_BALANCE);
+
+    // Transfer funds. The transfer amount (110) is more than Alice has (100).
+    const TRANSFER_AMOUNT:u64 = 110;
+    // Create transfer with approval transaction
+    let tx = _alice.tx_send_approve(
+        SERVICE_ID,
+        TxSendApprove {
+            to: author_address(&tx_bob),
+            approver: author_address(&tx_approver),
+            amount: TRANSFER_AMOUNT,
+            seed: 10,
+        },
+    );
+
+    // Execute transaction by invoking the corresponding API method
+    api.transfer(&tx).await;
+    testkit.create_block();
+    let expected_status = json!({
+        "type": "service_error",
+        "code": 3,
+        "description": "Insufficient currency amount.\n\nCan be emitted by `Transfer`.",
+        "runtime_id": 0,
+        "call_site": {
+            "call_type": "method",
+            "instance_id": SERVICE_ID,
+            "method_id": 0,
+        },
+    });
+    api.assert_tx_status(tx.object_hash(), &expected_status)
+        .await;
+
+    // Check that wallet's balances didn't change
+    let alice_wallet = api.get_wallet(tx_alice.author()).await.unwrap();
+    assert_eq!(alice_wallet.freezed_balance, 0);
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
+
+    let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
+    assert_eq!(bob_wallet.freezed_balance, 0);
+    assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
 }
 
 /// Check that the wallet creation transaction works when invoked via API.

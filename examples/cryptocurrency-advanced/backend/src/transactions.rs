@@ -102,17 +102,6 @@ impl TxSendApprove {
             approver: approver
         }
     }
-
-//    /// Returns a copy of this wallet with updated balance.
-//    pub fn set_balance(self, balance: u64, history_hash: &Hash) -> Self {
-//        Self::new(
-//            self.owner,
-//            &self.name,
-//            balance,
-//            self.history_len + 1,
-//            history_hash,
-//        )
-//    }
 }
 
 /// Issue `amount` of the currency to the `wallet`.
@@ -201,16 +190,18 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
             return Err(Error::SenderSameAsReceiver.into());
         }
 
+        // Check sender's waller exists
         let sender_wallet = schema.wallet(from).ok_or(Error::SenderNotFound)?;
-        
-        // Check approver exists
-        let _ = schema.wallet(arg.approver).ok_or(Error::ApproverNotFound)?;
-        
+        // Check receiver's waller exists
+        let _receiver_wallet = schema.wallet(to).ok_or(Error::ReceiverNotFound)?;
+        // Check approver's wallet exists
+        let _approver_wallet = schema.wallet(arg.approver).ok_or(Error::ApproverNotFound)?;
+
         // Check balance
         if sender_wallet.balance - sender_wallet.freezed_balance < amount {
             Err(Error::InsufficientCurrencyAmount.into())
         } else {
-            schema.create_approve_transaction(&sender_wallet, amount, to, arg.approver, tx_hash);
+            schema.create_approve_transaction(sender_wallet, amount, to, arg.approver, tx_hash);
             Ok(())
         }
     }
