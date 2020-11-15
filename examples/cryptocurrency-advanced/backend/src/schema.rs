@@ -82,9 +82,14 @@ where
         history.push(transaction);
 
         // Increase freezed balance
-        let history_hash = history.object_hash();
+        let history_hash_increase = history.object_hash();
         let freezed_balance = wallet.freezed_balance;
-        let wallet = wallet.set_freezed_balance(freezed_balance + amount, &history_hash);
+        let wallet = wallet.set_freezed_balance(freezed_balance + amount, &history_hash_increase);
+
+        // Decrease main balance
+        let history_hash_decrease = history.object_hash();
+        let current_balance = wallet.balance;
+        let wallet = wallet.set_balance(current_balance - amount, &history_hash_decrease);
 
         // storing in wallets-db
         let wallet_key = wallet.owner;
