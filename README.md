@@ -8,7 +8,7 @@ a pull-request to `master` branch,
 so You can easily see what changes have been made. 
 
 ## Homeworks
-- [ ] Task 1 - [branch](https://github.com/DeagleGross/exonum/tree/task_one) - [Pull Request](https://github.com/DeagleGross/exonum/pull/1)
+- [x] Task 1 - [branch](https://github.com/DeagleGross/exonum/tree/task_one) - [Pull Request](https://github.com/DeagleGross/exonum/pull/1)
 - [ ] Task 2 - branch - Pull Request
 - [ ] Task 3 - branch - Pull Request
 - [ ] Task 4 - branch - Pull Request
