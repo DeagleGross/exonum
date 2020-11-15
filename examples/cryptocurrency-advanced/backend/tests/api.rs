@@ -104,7 +104,7 @@ async fn test_tx_send_approve() {
     // check alice wallet has changed values of freezed_balance and balance
     let wallet_alice_new = api.get_wallet(tx_alice.author()).await.unwrap();
     assert_eq!(wallet_alice_new.freezed_balance, TRANSFER_AMOUNT);
-    assert_eq!(wallet_alice_new.balance, INITIAL_WALLET_BALANCE - TRANSFER_AMOUNT);
+    assert_eq!(wallet_alice_new.balance, INITIAL_WALLET_BALANCE);
 
     // check that bob wallet has not changed
     let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
