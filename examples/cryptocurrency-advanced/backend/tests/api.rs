@@ -56,6 +56,7 @@ fn author_address(tx: &Verified<AnyTx>) -> CallerAddress {
     CallerAddress::from_key(tx.author())
 }
 
+/// $ = 'some money'
 /// Makes transfer (10$) from 'alice' (100$ init) to 'bob' (100$ init) with approver
 /// Checks that alice.freezed_balance has to change to transfer_amount
 #[tokio::test]
@@ -81,15 +82,9 @@ async fn test_tx_send_approve() {
     let wallet_bob = api.get_wallet(tx_bob.author()).await.unwrap();
     let wallet_approver = api.get_wallet(tx_approver.author()).await.unwrap();
 
-    // checking wallets were correctly initialized
-    assert_eq!(wallet_alice.owner, author_address(&tx_alice)); // alice
-    assert_eq!(wallet_alice.name, ALICE_NAME);
+    // check that wallets have right initial balance
     assert_eq!(wallet_alice.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(wallet_bob.owner, author_address(&tx_bob)); // bob
-    assert_eq!(wallet_bob.name, BOB_NAME);
     assert_eq!(wallet_bob.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(wallet_approver.owner, author_address(&tx_approver)); // approver
-    assert_eq!(wallet_approver.name, APPROVER_NAME);
     assert_eq!(wallet_approver.balance, INITIAL_WALLET_BALANCE);
 
     // Create transfer with approval transaction: 10$ from 'alice' to 'bob' with 'approver'
@@ -137,15 +132,9 @@ async fn test_tx_send_approve_overcharge() {
     let wallet_bob = api.get_wallet(tx_bob.author()).await.unwrap();
     let wallet_approver = api.get_wallet(tx_approver.author()).await.unwrap();
 
-    // checking wallets were correctly initialized
-    assert_eq!(wallet_alice.owner, author_address(&tx_alice)); // alice
-    assert_eq!(wallet_alice.name, ALICE_NAME);
+    // check that wallets have right initial balance
     assert_eq!(wallet_alice.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(wallet_bob.owner, author_address(&tx_bob)); // bob
-    assert_eq!(wallet_bob.name, BOB_NAME);
     assert_eq!(wallet_bob.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(wallet_approver.owner, author_address(&tx_approver)); // approver
-    assert_eq!(wallet_approver.name, APPROVER_NAME);
     assert_eq!(wallet_approver.balance, INITIAL_WALLET_BALANCE);
 
     // Create transfer with approval transaction: 100$ from 'alice' to 'bob' with 'approver'
