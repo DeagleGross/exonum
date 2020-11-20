@@ -26,6 +26,7 @@ use exonum_derive::{FromAccess, RequireArtifact};
 
 use crate::{wallet::Wallet, INITIAL_BALANCE};
 use crate::{transactions::TxSendApprove};
+use crate::{transactions::TxApprove};
 
 /// Database schema for the cryptocurrency.
 ///
@@ -46,7 +47,9 @@ pub struct Schema<T: Access> {
     /// Map of wallet keys to information about the corresponding account.
     pub wallets: RawProofMapIndex<T::Base, Address, Wallet>,
     /// Map of approval transactions hash to infromation about the corresponding approval transaction
-    pub approval_transactions: RawProofMapIndex<T::Base, Hash, TxSendApprove>
+    pub approval_transactions: RawProofMapIndex<T::Base, Hash, TxSendApprove>,
+    /// Map of approved tx_send_approved transactions
+    pub approved_transactions: RawProofMapIndex<T::Base, Hash, TxApprove>
 }
 
 impl<T: Access> SchemaImpl<T> {
@@ -66,13 +69,23 @@ where
 {
     /// Append new unapproved transaction record to db.
     /// 'wallet' - wallet of sender
-    pub fn create_approve_transaction(&mut self, wallet: Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
+    pub fn create_send_approve_transaction(&mut self, wallet: Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
         // Update freezed balance & save the history
         self.increase_wallet_freezed_balance(wallet, amount, tx_hash);
 
         // Save transaction in schema.approval_transactions
         let transaction = TxSendApprove::new(to, amount, approver);
         self.public.approval_transactions.put(&tx_hash, transaction);
+    }
+
+    /// Append new unapproved transaction record to db.
+    /// 'wallet' - wallet of sender
+    pub fn create_approve_transaction(&mut self, sender_wallet: Wallet, receiver_wallet: Wallet, amount: u64, tx_approve: TxApprove, tx_hash: Hash) {
+        // Update freezed balance & save the history
+        self.change_wallet_balances(sender_wallet, receiver_wallet, amount, tx_hash);
+
+        // Save transaction in schema.approval_transactions
+        self.public.approved_transactions.put(&tx_hash, tx_approve.clone());
     }
 
     /// Increases freezed balance of the wallet and append new record to its history.
@@ -89,6 +102,29 @@ where
         // storing in wallets-db
         let wallet_key = wallet.owner;
         self.public.wallets.put(&wallet_key, wallet);
+    }
+
+    /// Decreases freezed balance of the wallet and append new record to its history.
+    pub fn change_wallet_balances(&mut self, sender_wallet: Wallet, receiver_wallet: Wallet, amount: u64, transaction: Hash) {
+        // change sender_wallet state
+        let owner = sender_wallet.owner;
+        let mut history = self.wallet_history.get(&owner);
+        history.push(transaction);
+        let history_hash = history.object_hash();
+        let balance = sender_wallet.balance;
+        let balanced_wallet = sender_wallet.set_balance(balance - amount, &history_hash);
+        let freezed = balanced_wallet.freezed_balance;
+        let freezed_balanced_wallet = balanced_wallet.set_freezed_balance(freezed - amount, &history_hash);
+        self.public.wallets.put(&owner, freezed_balanced_wallet);
+
+        // change receiver_wallet state
+        let owner = receiver_wallet.owner;
+        let mut history = self.wallet_history.get(&owner);
+        history.push(transaction);
+        let history_hash = history.object_hash();
+        let balance = receiver_wallet.balance;
+        let balanced_wallet = receiver_wallet.set_balance(balance + amount, &history_hash);
+        self.public.wallets.put(&owner, balanced_wallet);
     }
 
     /// Increases balance of the wallet and append new record to its history.

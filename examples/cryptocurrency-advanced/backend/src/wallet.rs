@@ -67,7 +67,7 @@ impl Wallet {
             balance,
             self.freezed_balance,
             self.history_len + 1,
-            history_hash,
+            history_hash
         )
     }
 
@@ -79,7 +79,7 @@ impl Wallet {
             self.balance,
             freezed_balance,
             self.history_len + 1,
-            history_hash,
+            history_hash
         )
     }
 }
