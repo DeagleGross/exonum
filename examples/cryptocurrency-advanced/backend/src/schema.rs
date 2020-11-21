@@ -71,7 +71,7 @@ where
     /// 'wallet' - wallet of sender
     pub fn create_send_approve_transaction(&mut self, wallet: Wallet, amount: u64, to: Address, approver: Address, tx_hash: Hash) {
         // Update freezed balance & save the history
-        self.increase_wallet_freezed_balance(wallet, amount, tx_hash);
+        self.change_wallet_balance(wallet, 0, amount as i64, tx_hash);
 
         // Save transaction in schema.approval_transactions
         let transaction = TxSendApprove::new(to, amount, approver);
@@ -81,50 +81,33 @@ where
     /// Append new unapproved transaction record to db.
     /// 'wallet' - wallet of sender
     pub fn create_approve_transaction(&mut self, sender_wallet: Wallet, receiver_wallet: Wallet, amount: u64, tx_approve: TxApprove, tx_hash: Hash) {
-        // Update freezed balance & save the history
-        self.change_wallet_balances(sender_wallet, receiver_wallet, amount, tx_hash);
+        let neg_amount = (amount as i64) * -1;
+        let pos_amount = amount as i64;
+        
+        // Update sender_wallet & save the history
+        self.change_wallet_balance(sender_wallet, neg_amount, neg_amount, tx_hash);
+        // Update receiver_wallet & save the history
+        self.change_wallet_balance(receiver_wallet, pos_amount, 0, tx_hash);
 
-        // Save transaction in schema.approval_transactions
+        // Save transaction in schema.approved_transactions
         self.public.approved_transactions.put(&tx_hash, tx_approve.clone());
     }
 
-    /// Increases freezed balance of the wallet and append new record to its history.
-    pub fn increase_wallet_freezed_balance(&mut self, wallet: Wallet, amount: u64, transaction: Hash) {
+    pub fn change_wallet_balance(&mut self, wallet: Wallet, balance_change: i64, freezed_balance_change: i64, transaction: Hash) {
         // Save transaction in wallet's history
         let mut history = self.wallet_history.get(&wallet.owner);
         history.push(transaction);
+        let history_hash = history.object_hash();
 
-        // Increase freezed balance
-        let history_hash_increase = history.object_hash();
-        let freezed_balance = wallet.freezed_balance;
-        let wallet = wallet.set_freezed_balance(freezed_balance + amount, &history_hash_increase);
+        let wallet_freezed_balance = wallet.freezed_balance;
+        let wallet_balance = wallet.balance;
+
+        let wallet = wallet.set_balance(((wallet_balance as i64) + balance_change) as u64, &history_hash);
+        let wallet = wallet.set_freezed_balance(((wallet_freezed_balance as i64) + freezed_balance_change) as u64, &history_hash);
 
         // storing in wallets-db
         let wallet_key = wallet.owner;
         self.public.wallets.put(&wallet_key, wallet);
-    }
-
-    /// Decreases freezed balance of the wallet and append new record to its history.
-    pub fn change_wallet_balances(&mut self, sender_wallet: Wallet, receiver_wallet: Wallet, amount: u64, transaction: Hash) {
-        // change sender_wallet state
-        let owner = sender_wallet.owner;
-        let mut history = self.wallet_history.get(&owner);
-        history.push(transaction);
-        let history_hash = history.object_hash();
-        let balance = sender_wallet.balance;
-        let balanced_wallet = sender_wallet.set_balance(balance - amount, &history_hash);
-        let freezed = balanced_wallet.freezed_balance;
-        let freezed_balanced_wallet = balanced_wallet.set_freezed_balance(freezed - amount, &history_hash);
-        self.public.wallets.put(&owner, freezed_balanced_wallet);
-
-        // change receiver_wallet state
-        let owner = receiver_wallet.owner;
-        let mut history = self.wallet_history.get(&owner);
-        history.push(transaction);
-        let history_hash = history.object_hash();
-        let balance = receiver_wallet.balance;
-        let balanced_wallet = receiver_wallet.set_balance(balance + amount, &history_hash);
-        self.public.wallets.put(&owner, balanced_wallet);
     }
 
     /// Increases balance of the wallet and append new record to its history.

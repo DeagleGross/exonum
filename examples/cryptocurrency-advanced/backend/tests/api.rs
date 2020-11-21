@@ -59,7 +59,7 @@ fn author_address(tx: &Verified<AnyTx>) -> CallerAddress {
 /// Creates a tx_send_approve and then makes a tx_approve
 #[tokio::main]
 #[test]
-async fn test_integration_approvals() {
+async fn test_approve_after_tx_send() {
     const INITIAL_WALLET_BALANCE:u64 = 100;
     const TRANSFER_AMOUNT:u64 = 10;
 
@@ -73,7 +73,7 @@ async fn test_integration_approvals() {
 
     // Create transfer with approval transaction: 10$ from 'alice' to 'bob' with 'approver'
     let tx_send_approve = TxSendApprove::new(author_address(&tx_bob), TRANSFER_AMOUNT, author_address(&tx_approver));
-    let tx_send_approve_result =_alice.tx_send_approve(SERVICE_ID, tx_send_approve.clone());
+    let tx_send_approve_result = _alice.tx_send_approve(SERVICE_ID, tx_send_approve);
 
     // Execute transaction by invoking the corresponding API method
     api.transfer(&tx_send_approve_result).await;
@@ -81,7 +81,7 @@ async fn test_integration_approvals() {
     api.assert_tx_status(tx_send_approve_result.object_hash(), &json!({ "type": "success" })).await;
 
     // Create approve transaction
-    let tx_approve = TxApprove::new(tx_send_approve);
+    let tx_approve = TxApprove::new(author_address(&tx_alice), author_address(&tx_bob), TRANSFER_AMOUNT);
     let tx_approve_result = _approver.tx_approve(SERVICE_ID, tx_approve);
 
     // Execute approve transaction
@@ -89,26 +89,28 @@ async fn test_integration_approvals() {
     testkit.create_block();
     api.assert_tx_status(tx_approve_result.object_hash(), &json!({ "type": "success" })).await;
 
-    // getting wallets
-    let wallet_alice = api.get_wallet(tx_alice.author()).await.unwrap();
-    let wallet_bob = api.get_wallet(tx_bob.author()).await.unwrap();
-    let wallet_approver = api.get_wallet(tx_approver.author()).await.unwrap();
+    // Check the balances via public schema.
+    let snapshot = testkit.snapshot();
+    let schema: Schema<_> = snapshot.service_schema(SERVICE_ID).unwrap();
+    
+    let alice_wallet = schema.wallets.get(&author_address(&tx_alice)).unwrap();
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE - TRANSFER_AMOUNT);
+    assert_eq!(alice_wallet.freezed_balance, 0);
+    
+    let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
+    assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE + TRANSFER_AMOUNT);
+    assert_eq!(bob_wallet.freezed_balance, 0);
 
-    // check that wallets have correct balance and freezed_balance
-    assert_eq!(wallet_alice.balance, INITIAL_WALLET_BALANCE - TRANSFER_AMOUNT);
-    assert_eq!(wallet_alice.freezed_balance, 0);
-
-    assert_eq!(wallet_bob.balance, INITIAL_WALLET_BALANCE + TRANSFER_AMOUNT);
-    assert_eq!(wallet_bob.freezed_balance, 0);
-
-    assert_eq!(wallet_approver.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(wallet_approver.freezed_balance, 0);
+    let approver_wallet = schema.wallets.get(&author_address(&tx_approver)).unwrap();
+    assert_eq!(approver_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(approver_wallet.freezed_balance, 0);
 }
 
 /// $ = 'some money'
 /// Makes transfer (10$) from 'alice' (100$ init) to 'bob' (100$ init) with approver
 /// Checks that alice.freezed_balance has to change to transfer_amount
-#[tokio::test]
+#[tokio::main]
+#[test]
 async fn test_tx_send_approve() {
     const INITIAL_WALLET_BALANCE:u64 = 100;
     const TRANSFER_AMOUNT:u64 = 10;
@@ -145,15 +147,26 @@ async fn test_tx_send_approve() {
     testkit.create_block();
     api.assert_tx_status(tx.object_hash(), &json!({ "type": "success" })).await;
 
-    // check alice wallet has changed values of freezed_balance and balance
-    let wallet_alice_new = api.get_wallet(tx_alice.author()).await.unwrap();
-    assert_eq!(wallet_alice_new.freezed_balance, TRANSFER_AMOUNT);
-    assert_eq!(wallet_alice_new.balance, INITIAL_WALLET_BALANCE);
-
-    // check that bob wallet has not changed
-    let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
-    assert_eq!(bob_wallet.freezed_balance, 0);
+    // Check the balances via public schema.
+    let snapshot = testkit.snapshot();
+    let schema: Schema<_> = snapshot.service_schema(SERVICE_ID).unwrap();
+    
+    let alice_wallet = schema.wallets.get(&author_address(&tx_alice)).unwrap();
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(alice_wallet.freezed_balance, TRANSFER_AMOUNT);
+    
+    let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
     assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(bob_wallet.freezed_balance, 0);
+
+    // Create transfer with approval transaction: 10$ from 'alice' to 'bob' with 'approver'
+    let tx_send_approve_2 = TxSendApprove::new(author_address(&tx_bob), TRANSFER_AMOUNT, author_address(&tx_approver));
+    let tx_2 = _alice.tx_send_approve(SERVICE_ID, tx_send_approve_2);
+
+    // Execute transaction by invoking the corresponding API method
+    api.transfer(&tx_2).await;
+    testkit.create_block();
+    api.assert_tx_status(tx_2.object_hash(), &json!({ "type": "success" })).await;
 
     // Check the balances via public schema.
     let snapshot = testkit.snapshot();
@@ -161,7 +174,7 @@ async fn test_tx_send_approve() {
     
     let alice_wallet = schema.wallets.get(&author_address(&tx_alice)).unwrap();
     assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
-    assert_eq!(alice_wallet.freezed_balance, 10);
+    assert_eq!(alice_wallet.freezed_balance, TRANSFER_AMOUNT * 2);
     
     let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
     assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
@@ -170,7 +183,8 @@ async fn test_tx_send_approve() {
 
 /// Makes transfer (110$) from 'alice' (100$ init) to 'bob' (100$ init) with approver
 /// Transfer amount is bigger than possible value, so states of wallets has to be not changed
-#[tokio::test]
+#[tokio::main]
+#[test]
 async fn test_tx_send_approve_overcharge() {
     const INITIAL_WALLET_BALANCE:u64 = 100;
     const TRANSFER_AMOUNT:u64 = 110;
@@ -206,15 +220,55 @@ async fn test_tx_send_approve_overcharge() {
     // Not checking 'success' status because it is a fail one
     api.transfer(&tx).await;
 
-    // check alice wallet has changed values of freezed_balance and balance
-    let wallet_alice_new = api.get_wallet(tx_alice.author()).await.unwrap();
-    assert_eq!(wallet_alice_new.freezed_balance, 0);
-    assert_eq!(wallet_alice_new.balance, INITIAL_WALLET_BALANCE);
-
-    // check that bob wallet has not changed
-    let bob_wallet = api.get_wallet(tx_bob.author()).await.unwrap();
-    assert_eq!(bob_wallet.freezed_balance, 0);
+    // Check the balances via public schema.
+    let snapshot = testkit.snapshot();
+    let schema: Schema<_> = snapshot.service_schema(SERVICE_ID).unwrap();
+    
+    let alice_wallet = schema.wallets.get(&author_address(&tx_alice)).unwrap();
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(alice_wallet.freezed_balance, 0);
+    
+    let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
     assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(bob_wallet.freezed_balance, 0);
+}
+
+#[tokio::main]
+#[test]
+async fn test_approve_overcharge() {
+    const INITIAL_WALLET_BALANCE:u64 = 100;
+    const TRANSFER_AMOUNT:u64 = 110;
+
+    let (mut testkit, api) = create_testkit();
+    
+    // Create 3 wallets through api
+    let (tx_alice, _alice) = api.create_wallet(ALICE_NAME).await;
+    let (tx_bob, _bob) = api.create_wallet(BOB_NAME).await;
+    let (tx_approver, _approver) = api.create_wallet(APPROVER_NAME).await;
+    testkit.create_block();
+
+    // Create transfer with approval transaction: 10$ from 'alice' to 'bob' with 'approver'
+    let tx_approve = TxApprove::new(author_address(&tx_alice), author_address(&tx_bob), TRANSFER_AMOUNT);
+    let tx_approve_result = _approver.tx_approve(SERVICE_ID, tx_approve);
+
+    // Execute approve transaction
+    api.transfer(&tx_approve_result).await;
+
+    // Check the balances via public schema.
+    let snapshot = testkit.snapshot();
+    let schema: Schema<_> = snapshot.service_schema(SERVICE_ID).unwrap();
+    
+    let alice_wallet = schema.wallets.get(&author_address(&tx_alice)).unwrap();
+    assert_eq!(alice_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(alice_wallet.freezed_balance, 0);
+    
+    let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
+    assert_eq!(bob_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(bob_wallet.freezed_balance, 0);
+
+    let approver_wallet = schema.wallets.get(&author_address(&tx_approver)).unwrap();
+    assert_eq!(approver_wallet.balance, INITIAL_WALLET_BALANCE);
+    assert_eq!(approver_wallet.freezed_balance, 0);
 }
 
 /// Check that the wallet creation transaction works when invoked via API.
@@ -236,7 +290,8 @@ async fn test_create_wallet() {
 }
 
 /// Check that the transfer transaction works as intended.
-#[tokio::test]
+#[tokio::main]
+#[test]
 async fn test_transfer() {
     // Create 2 wallets.
     let (mut testkit, api) = create_testkit();
@@ -283,6 +338,27 @@ async fn test_transfer() {
     assert_eq!(alice_wallet.balance, 90);
     let bob_wallet = schema.wallets.get(&author_address(&tx_bob)).unwrap();
     assert_eq!(bob_wallet.balance, 110);
+
+    // Transfer funds by invoking the corresponding API method.
+    let tx_2 = alice.transfer(
+        SERVICE_ID,
+        Transfer {
+            to: author_address(&tx_bob),
+            amount: 50,
+            seed: 11,
+        }
+    );
+
+    api.transfer(&tx_2).await;
+    testkit.create_block();
+    api.assert_tx_status(tx_2.object_hash(), &json!({ "type": "success" })).await;
+
+    // After the transfer transaction is included into a block, we may check new wallet
+    // balances.
+    let wallet = api.get_wallet(tx_alice.author()).await.unwrap();
+    assert_eq!(wallet.balance, 40);
+    let wallet = api.get_wallet(tx_bob.author()).await.unwrap();
+    assert_eq!(wallet.balance, 160);
 }
 
 /// Check that a transfer from a non-existing wallet fails as expected.
