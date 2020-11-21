@@ -40,6 +40,18 @@ message TxSendApprove {
   exonum.crypto.Hash approver = 4;
 }
 
+// Stands for Approval for some TxSendApproval transaction
+message TxApprove {
+  // Address of sender's wallet.
+  exonum.crypto.Hash from = 1;
+  // Address of receiver's wallet.
+  exonum.crypto.Hash to = 2;
+  // Amount of currency to transfer.
+  uint64 amount = 3;
+  // Auxiliary number to guarantee non-idempotence of transactions.
+  uint64 seed = 4;
+}
+
 // Issue `amount` of the currency to the `wallet`.
 message Issue {
   // Issued amount of currency.

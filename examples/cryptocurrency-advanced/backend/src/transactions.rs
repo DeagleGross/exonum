@@ -14,10 +14,7 @@
 
 //! Cryptocurrency transactions.
 
-use exonum::{
-    crypto::Hash,
-    runtime::{CallerAddress as Address, CommonError, ExecutionContext, ExecutionError},
-};
+use exonum::{ crypto::Hash, runtime::{CallerAddress as Address, CommonError, ExecutionContext, ExecutionError} };
 use exonum_derive::{exonum_interface, interface_method, BinaryValue, ExecutionFail, ObjectHash};
 use exonum_proto::ProtobufConvert;
 
@@ -68,7 +65,6 @@ pub struct Transfer {
     pub seed: u64
 }
 
-
 /// Information about transaction with approval stored in the database.
 #[derive(Clone, Debug)]
 #[derive(ProtobufConvert, BinaryValue, ObjectHash)]
@@ -86,6 +82,23 @@ pub struct TxSendApprove {
     pub approver: Address
 }
 
+/// Information about transaction with approval stored in the database.
+#[derive(Clone, Debug)]
+#[derive(ProtobufConvert, BinaryValue, ObjectHash)]
+#[protobuf_convert(source = "proto::service::TxApprove", serde_pb_convert)]
+pub struct TxApprove {
+    /// Address of sender person
+    pub from: Address,
+    /// Address of receiver's wallet.
+    pub to: Address,
+    /// Amount of currency to transfer.
+    pub amount: u64,
+    /// Auxiliary number to guarantee [non-idempotence][idempotence] of transactions.
+    ///
+    /// [idempotence]: https://en.wikipedia.org/wiki/Idempotence
+    pub seed: u64
+}
+
 impl TxSendApprove {
     /// Creates a new approval transaction.
     pub fn new(
@@ -100,6 +113,24 @@ impl TxSendApprove {
             amount: amount,
             seed: rng.gen::<u64>(),
             approver: approver
+        }
+    }
+}
+
+impl TxApprove {
+    /// Creates a new approval transaction.
+    pub fn new(
+        from: Address,
+        to: Address,
+        amount: u64
+    ) -> Self {
+        let mut rng = rand::thread_rng();
+
+        Self {
+            from: from,
+            to: to,
+            amount: amount,
+            seed: rng.gen::<u64>()
         }
     }
 }
@@ -153,6 +184,9 @@ pub trait CryptocurrencyInterface<Ctx> {
     /// Transfer `amount` of the currency from one wallet to another with approval from third person.
     #[interface_method(id = 3)]
     fn tx_send_approve(&self, ctx: Ctx, arg: TxSendApprove) -> Self::Output;
+    /// Approve transaction tx_send_approve
+    #[interface_method(id = 4)]
+    fn tx_approve(&self, ctx: Ctx, arg: TxApprove) -> Self::Output;
 }
 
 impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
@@ -190,9 +224,9 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
             return Err(Error::SenderSameAsReceiver.into());
         }
 
-        // Check sender's waller exists
+        // Check sender's wallet exists
         let sender_wallet = schema.wallet(from).ok_or(Error::SenderNotFound)?;
-        // Check receiver's waller exists
+        // Check receiver's wallet exists
         let _receiver_wallet = schema.wallet(to).ok_or(Error::ReceiverNotFound)?;
         // Check approver's wallet exists
         let _approver_wallet = schema.wallet(arg.approver).ok_or(Error::ApproverNotFound)?;
@@ -201,7 +235,33 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
         if sender_wallet.balance - sender_wallet.freezed_balance < amount {
             Err(Error::InsufficientCurrencyAmount.into())
         } else {
-            schema.create_approve_transaction(sender_wallet, amount, to, arg.approver, tx_hash);
+            schema.create_send_approve_transaction(sender_wallet, amount, to, arg.approver, tx_hash);
+            Ok(())
+        }
+    }
+
+    fn tx_approve(&self, context: ExecutionContext<'_>, arg: TxApprove) -> Self::Output {
+        // Getting schema
+        let (_approver, tx_hash) = extract_info(&context)?;
+        let mut schema = SchemaImpl::new(context.service_data());
+
+        let from = arg.from;
+        let to = arg.to;
+        let amount = arg.amount;
+
+        // Check sender's waller exists
+        let sender_wallet = schema.wallet(from).ok_or(Error::SenderNotFound)?;
+        // Check receiver's waller exists
+        let receiver_wallet = schema.wallet(to).ok_or(Error::ReceiverNotFound)?;
+        // Check approver's wallet exists
+        let _approver_wallet = schema.wallet(_approver).ok_or(Error::ApproverNotFound)?;
+
+        // both freezed_balance and balance
+        // have to be bigger than amount
+        if amount > sender_wallet.balance && amount > sender_wallet.freezed_balance {
+            Err(Error::InsufficientCurrencyAmount.into())
+        } else {
+            schema.create_approve_transaction(sender_wallet, receiver_wallet, amount, arg.clone(), tx_hash);
             Ok(())
         }
     }
@@ -221,8 +281,8 @@ impl CryptocurrencyInterface<ExecutionContext<'_>> for CryptocurrencyService {
 
     fn create_wallet(&self, context: ExecutionContext<'_>, arg: CreateWallet) -> Self::Output {
         let (from, tx_hash) = extract_info(&context)?;
-
         let mut schema = SchemaImpl::new(context.service_data());
+
         if schema.wallet(from).is_none() {
             let name = &arg.name;
             schema.create_wallet(from, name, tx_hash);
