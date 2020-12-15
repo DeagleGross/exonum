@@ -37,7 +37,7 @@ pub(crate) struct SchemaImpl<T: Access> {
     #[from_access(flatten)]
     pub public: Schema<T>,
     /// History for specific wallets.
-    pub wallet_history: Group<T, Address, ProofListIndex<T::Base, Hash>>,
+    pub wallet_history: Group<T, Address, ProofListIndex<T::Base, Hash>>
 }
 
 /// Public part of the cryptocurrency schema.

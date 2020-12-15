@@ -126,7 +126,7 @@ impl PublicApi {
         let to_wallet = currency_schema.public.wallets.get_proof(address);
         let wallet_proof = WalletProof {
             to_table: index_proof,
-            to_wallet,
+            to_wallet
         };
         let wallet = currency_schema.public.wallets.get(&address);
 
@@ -135,13 +135,12 @@ impl PublicApi {
             let history = currency_schema.wallet_history.get(&address);
             let proof = history.get_range_proof(..);
 
-            // TODO check
             // Get all transactions
             let transactions = state.data().for_core().transactions();
             // From transaction get only ones which exists in approval transactions
             let approval_transactions = history
                 .iter()
-                .map(|tx_hash| currency_schema.public.approval_transactions.get(&tx_hash).unwrap())
+                .map(|tx_hash| transactions.get(&tx_hash).unwrap())
                 .collect();
 
             WalletHistory {
@@ -161,7 +160,13 @@ impl PublicApi {
     pub fn wire(builder: &mut ServiceApiBuilder) {
         builder
             .public_scope()
-            .endpoint("v1/wallets/info", Self::wallet_info)
+            .endpoint("v1/wallets/info", Self::wallet_info);
+    }
+
+    /// Approve api
+    pub fn wire_approval(builder: &mut ServiceApiBuilder) {
+        builder
+            .public_scope()
             .endpoint("v1/wallets/approval_transaction_history", Self::wallet_approval_transactions_history);
     }
 }
