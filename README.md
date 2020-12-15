@@ -10,8 +10,7 @@ so You can easily see what changes have been made.
 ## Homeworks
 - [x] Task 1 - [branch](https://github.com/DeagleGross/exonum/tree/task_one) - [Pull Request](https://github.com/DeagleGross/exonum/pull/1)
 - [x] Task 2 - [branch](https://github.com/DeagleGross/exonum/tree/task_two) - [Pull Request](https://github.com/DeagleGross/exonum/pull/2)
-- [ ] Task 3 - branch - Pull Request
-- [ ] Task 4 - branch - Pull Request
+- [x] Task 3 - [branch](https://github.com/DeagleGross/exonum/tree/task_three) - [Pull Request](https://github.com/DeagleGross/exonum/pull/3)
 ---
 
 **Status:**
